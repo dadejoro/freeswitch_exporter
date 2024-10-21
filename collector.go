@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -306,7 +307,6 @@ func (c *Collector) scrape(ch chan<- prometheus.Metric) error {
 	if err = c.registrationsMetrics(ch); err != nil {
 		return err
 	}
-
 	if err = c.vertoMetrics(ch); err != nil {
 		return err
 	}
@@ -421,7 +421,7 @@ func (c *Collector) sofiaStatusMetrics(ch chan<- prometheus.Metric) error {
 		}
 		level.Debug(logger).Log("sofia ", gateway.Name, " status:", status)
 		fs_status, err := prometheus.NewConstMetric(
-			prometheus.NewDesc(namespace+"_sofia_gateway_status", "freeswitch gateways status", nil, prometheus.Labels{"name": gateway.Name, "proxy": gateway.Proxy, "profile": gateway.Profile, "context": gateway.Context, "scheme": gateway.Scheme, "status": gateway.Status}),
+			prometheus.NewDesc(namespace+"_sofia_gateway_status", "freeswitch gateways status", nil, prometheus.Labels{"name": gateway.Name, "proxy": gateway.Proxy, "profile": gateway.Profile, "context": gateway.Context, "scheme": gateway.Scheme, "status": gateway.Status, "state": gateway.State}),
 			prometheus.GaugeValue,
 			float64(status),
 		)
@@ -695,8 +695,16 @@ func (c *Collector) codecMetrics(ch chan<- prometheus.Metric) error {
 func (c *Collector) vertoMetrics(ch chan<- prometheus.Metric) error {
 	promlogConfig := &promlog.Config{}
 	logger := promlog.New(promlogConfig)
+	vertoExists, err := c.fsCommand("api module_exists mod_verto")
+	// Convert response to string and trim any whitespace
+	if err != nil {
+		return err
+	}
+	responseStr := strings.TrimSpace(string(vertoExists))
+	if responseStr == "false" {
+		return nil
+	}
 	response, err := c.fsCommand("api verto xmlstatus")
-
 	if err != nil {
 		return err
 	}
@@ -882,8 +890,8 @@ func (c *Collector) fetchMetric(metricDef *Metric) (float64, error) {
 			return 1, nil
 		}
 
-		log.Printf("[warning] time not in sync between system (%v) and FreeSWITCH (%v)\n",
-			now.Unix(), value)
+		//log.Printf("[warning] time not in sync between system (%v) and FreeSWITCH (%v)\n",
+		//	now.Unix(), value)
 
 		return 0, nil
 	}
