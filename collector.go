@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"os/exec"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -193,6 +194,7 @@ var (
 		{Name: "detailed_bridged_calls", Type: prometheus.GaugeValue, Help: "Number of detailed_bridged_calls active", Command: "api show detailed_bridged_calls as json"},
 		{Name: "detailed_calls", Type: prometheus.GaugeValue, Help: "Number of detailed_calls active", Command: "api show detailed_calls as json"},
 		{Name: "bridged_calls", Type: prometheus.GaugeValue, Help: "Number of bridged_calls active", Command: "api show bridged_calls as json"},
+		{Name: "old_calls", Type: prometheus.GaugeValue, Help: "Number of calls older than a threshold (e.g., 1 hour)", Command: "api show calls as json"},
 		{Name: "registrations", Type: prometheus.GaugeValue, Help: "Number of registrations active", Command: "api show registrations as json"},
 		{Name: "current_channels", Type: prometheus.GaugeValue, Help: "Number of channels active", Command: "api show channels count as json"},
 		{Name: "uptime_seconds", Type: prometheus.GaugeValue, Help: "Uptime in seconds", Command: "api uptime s"},
@@ -865,6 +867,28 @@ func (c *Collector) fetchMetric(metricDef *Metric) (float64, error) {
 		}
 
 		return r.Count, nil
+	case "old_calls":
+		// Execute FreeSWITCH command
+		cmd := exec.Command("fs_cli", "-x", "show calls")
+		output, err := cmd.Output()
+		if err != nil {
+			return 0, fmt.Errorf("error executing fs_cli: %w", err)
+		}
+
+		// Regular expression to match calls and extract timestamp
+		re := regexp.MustCompile(`^([a-f0-9\-]{36}),(\w+?),([\d\-]{10}) ([\d\:]{8}),(\d+)`)
+		count := 0
+
+		for _, line := range strings.Split(string(output), "\n") {
+			matches := re.FindStringSubmatch(line)
+			if len(matches) == 6 {
+				callTimestamp, err := time.Parse("2006-01-02 15:04:05", matches[3]+" "+matches[4])
+				if err == nil && callTimestamp.Before(now.Add(-6*time.Hour)) {
+					count++
+				}
+			}
+		}
+		return float64(count), nil
 	case "uptime_seconds":
 		raw := string(response)
 
