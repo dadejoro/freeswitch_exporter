@@ -195,6 +195,7 @@ var (
 		{Name: "detailed_calls", Type: prometheus.GaugeValue, Help: "Number of detailed_calls active", Command: "api show detailed_calls as json"},
 		{Name: "bridged_calls", Type: prometheus.GaugeValue, Help: "Number of bridged_calls active", Command: "api show bridged_calls as json"},
 		{Name: "old_calls", Type: prometheus.GaugeValue, Help: "Number of calls older than a threshold (e.g., 1 hour)", Command: "api show calls as json"},
+		{Name: "inbound_pause_status", Type: prometheus.GaugeValue, Help: "Is inbound paused", Command: "fs_cli -x \"fsctl pause_check inbound\""},
 		{Name: "registrations", Type: prometheus.GaugeValue, Help: "Number of registrations active", Command: "api show registrations as json"},
 		{Name: "current_channels", Type: prometheus.GaugeValue, Help: "Number of channels active", Command: "api show channels count as json"},
 		{Name: "uptime_seconds", Type: prometheus.GaugeValue, Help: "Uptime in seconds", Command: "api uptime s"},
@@ -869,7 +870,7 @@ func (c *Collector) fetchMetric(metricDef *Metric) (float64, error) {
 		return r.Count, nil
 	case "old_calls":
 		// Execute FreeSWITCH command
-		cmd := exec.Command("fs_cli", "-x", "show calls")
+		cmd := exec.Command("/sbin/fs_cli", "-x", "show calls")
 		output, err := cmd.Output()
 		if err != nil {
 			return 0, fmt.Errorf("error executing fs_cli: %w", err)
@@ -889,6 +890,17 @@ func (c *Collector) fetchMetric(metricDef *Metric) (float64, error) {
 			}
 		}
 		return float64(count), nil
+	case "inbound_pause_status":
+		cmd := exec.Command("/sbin/fs_cli", "-x", "fsctl pause_check inbound")
+		output, err := cmd.Output()
+		if err != nil {
+			return 0, fmt.Errorf("error checking inbound pause status: %w", err)
+		}
+
+		if strings.Contains(string(output), "true") {
+			return 1, nil
+		}
+		return 0, nil
 	case "uptime_seconds":
 		raw := string(response)
 
